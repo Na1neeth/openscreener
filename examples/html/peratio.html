@@ -1,0 +1,128 @@
+<section id="chart" class="card card-large" style="margin-bottom: 2.5rem">
+      <div id="chart-menu" class="flex flex-space-between flex-wrap" style="margin-bottom: 16px">
+  <div class="options" id="company-chart-days">
+    <button name="days" value="30" onclick="CompanyChart.setActive(event)" type="button">1M</button>
+    <button name="days" value="180" onclick="CompanyChart.setActive(event)" type="button">6M</button>
+    <button name="days" value="365" onclick="CompanyChart.setActive(event)" type="button" class="">1Yr</button>
+    <button name="days" value="1095" onclick="CompanyChart.setActive(event)" type="button">3Yr</button>
+    <button name="days" value="1825" onclick="CompanyChart.setActive(event)" type="button" class="active">5Yr</button>
+    <button name="days" value="3652" onclick="CompanyChart.setActive(event)" type="button">10Yr</button>
+    <button name="days" value="10000" onclick="CompanyChart.setActive(event)" type="button">Max</button>
+  </div>
+
+  <div class="flex margin-bottom-24">
+    <div class="options margin-right-8" id="company-chart-metrics" style="margin-bottom: 0">
+      
+
+        
+          <button class="plausible-event-name=Chart+Metric plausible-event-user=unregistered plausible-event-metric=Price" onclick="CompanyChart.setActive(event)" name="metrics" value="Price-DMA50-DMA200-Volume" type="button">Price</button>
+        
+
+      
+
+        
+          <button class="plausible-event-name=Chart+Metric plausible-event-user=unregistered plausible-event-metric=PE" onclick="CompanyChart.setActive(event)" name="metrics" value="Price to Earning-Median PE-EPS" type="button">PE Ratio</button>
+        
+
+      
+
+        
+
+      
+
+        
+
+      
+
+        
+
+      
+
+        
+
+      
+      <button class="active" id="company-chart-metrics-more-active" onclick="CompanyChart.setActive(event)" name="metrics" value="Market Cap to Sales-Median Market Cap to Sales-Sales" type="button">Market Cap / Sales</button>
+      <div class="dropdown-menu" id="metrics-dropdown" data-has-outside-click-listener="true" data-has-escape-listener="true">
+        <button type="button" class="button-plain" onclick="Utils.toggleDropdown(event)">
+          More <i class="icon-down"></i>
+        </button>
+        <ul class="dropdown-content" style="max-width: 160px; right: 0">
+          
+
+            
+
+          
+
+            
+
+          
+
+            
+              <li>
+                <button class="a u-full-width plausible-event-name=Chart+Metric plausible-event-user=unregistered plausible-event-metric=Sales" style="padding: 4px 12px" onclick="CompanyChart.setActive(event)" name="metrics" value="GPM-OPM-NPM-Quarter Sales" type="button">Sales &amp; Margin</button>
+              </li>
+            
+
+          
+
+            
+              <li>
+                <button class="a u-full-width plausible-event-name=Chart+Metric plausible-event-user=unregistered plausible-event-metric=EV-EBITDA" style="padding: 4px 12px" onclick="CompanyChart.setActive(event)" name="metrics" value="EV Multiple-Median EV Multiple-EBITDA" type="button">EV / EBITDA</button>
+              </li>
+            
+
+          
+
+            
+              <li>
+                <button class="a u-full-width plausible-event-name=Chart+Metric plausible-event-user=unregistered plausible-event-metric=PBV" style="padding: 4px 12px" onclick="CompanyChart.setActive(event)" name="metrics" value="Price to book value-Median PBV-Book value" type="button">Price to Book</button>
+              </li>
+            
+
+          
+
+            
+              <li>
+                <button class="a u-full-width plausible-event-name=Chart+Metric plausible-event-user=unregistered plausible-event-metric=Market+Cap+to+Sales hidden active" style="padding: 4px 12px" onclick="CompanyChart.setActive(event)" name="metrics" value="Market Cap to Sales-Median Market Cap to Sales-Sales" type="button">Market Cap / Sales</button>
+              </li>
+            
+
+          
+        </ul>
+      </div>
+    </div>
+    
+      <button type="button" class="button-small button-secondary flex flex-align-center plausible-event-name=Stock+Alert" style="border-color: var(--button-border);
+                     border-radius: 3px" data-title="Alerts for Tata Consultancy Services Ltd" onclick="Modal.openInModal(event)" data-url="/alerts/stock-1161/" aria-label="Add alerts for company">
+        <i class="icon-bell"></i>
+        
+        <span class="margin-left-4 normal-case letter-spacing-0">Alerts</span>
+      </button>
+    
+  </div>
+</div>
+
+<div class="flex no-select">
+  <div class="hide-on-mobile chart-label">
+    <div id="chart-label-left">Sales</div>
+  </div>
+
+  <div id="chart-area" style="flex-grow: 1">
+    <div id="chart-info" class="invisible">
+      <div id="chart-crosshair" style="top: 10.2px; height: 336.4px;"></div>
+      <div id="chart-tooltip" class="font-size-14">
+        <div id="chart-tooltip-meta" class="ink-700 font-size-12"></div>
+        <div class="font-weight-500 font-size-15" id="chart-tooltip-title"></div>
+        <div id="chart-tooltip-info"></div>
+      </div>
+    </div>
+    <div id="canvas-chart-holder" style="height: 375px"><canvas width="2440" height="750" style="display: block; box-sizing: border-box; height: 375px; width: 1220px;"></canvas></div>
+  </div>
+
+  <div class="hide-on-mobile chart-label">
+    <div id="chart-label-right">Market Cap / Sales</div>
+  </div>
+</div>
+<div class="flex flex-wrap" style="justify-content: center; margin-top: 2rem;" id="chart-legend"><label style="box-sizing: border-box; padding: 6px 8px; font-size: 14px; font-weight: 500; cursor: pointer;"><input class="chart-checkbox" type="checkbox" style="background: rgb(100, 93, 249);"><span>Market Cap / Sales</span></label><label style="box-sizing: border-box; padding: 6px 8px; font-size: 14px; font-weight: 500; cursor: pointer;"><input class="chart-checkbox" type="checkbox" style="background: rgb(191, 191, 191);"><span>Median Market Cap to Sales = 6.9</span></label><label style="box-sizing: border-box; padding: 6px 8px; font-size: 14px; font-weight: 500; cursor: pointer;"><input class="chart-checkbox" type="checkbox" style="background: rgb(160, 216, 248);"><span>Sales</span></label></div>
+
+    </section>
