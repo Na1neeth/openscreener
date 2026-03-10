@@ -1,6 +1,10 @@
+from contextlib import redirect_stdout
+from io import StringIO
+import json
 import sys
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -80,6 +84,69 @@ class OpenScreenerTestCase(unittest.TestCase):
 
         self.assertEqual(sorted(payload.keys()), ["INFY", "TCS"])
         self.assertEqual(payload["TCS"]["year"], "Mar 2025")
+
+    def test_to_json_serializes_full_payload(self) -> None:
+        payload = json.loads(self.stock.to_json())
+
+        self.assertIn("summary", payload)
+        self.assertIn("cash_flow", payload)
+        self.assertEqual(payload["summary"]["company_name"], "Tata Consultancy Services Ltd")
+
+    def test_wrapper_methods_expose_pros_cons_and_shareholding_views(self) -> None:
+        self.assertIn("Company has a good return on equity", self.stock.pros()[0])
+        self.assertIn("Stock is trading at 10.8 times its book value", self.stock.cons()[0])
+        self.assertEqual(self.stock.shareholding_quarterly()[-1]["date"], "Dec 2025")
+        self.assertEqual(self.stock.shareholding_yearly()[-1]["date"], "Dec 2025")
+
+    def test_pretty_renders_human_readable_section_output(self) -> None:
+        buffer = StringIO()
+
+        with redirect_stdout(buffer):
+            self.stock.pretty("cash_flow")
+
+        output = buffer.getvalue()
+        self.assertIn("Cash Flow", output)
+        self.assertIn("Operating Cash Flow", output)
+        self.assertIn("Mar 2025", output)
+
+    def test_pretty_supports_pros_alias(self) -> None:
+        buffer = StringIO()
+
+        with redirect_stdout(buffer):
+            self.stock.pretty("pros")
+
+        output = buffer.getvalue()
+        self.assertIn("Pros", output)
+        self.assertIn("- Company has a good return on equity", output)
+
+    def test_print_section_rejects_unsupported_section(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported section"):
+            self.stock.print_section("unknown")
+
+    def test_to_dataframe_uses_pandas_lazily(self) -> None:
+        class FakePandas:
+            def DataFrame(self, data):
+                return {"data": data}
+
+        with patch("openscreener.stock.importlib.import_module", return_value=FakePandas()):
+            frame = self.stock.to_dataframe("peers")
+
+        self.assertEqual(frame["data"], self.stock.peers()["companies"])
+
+    def test_to_dataframe_raises_helpful_error_when_pandas_is_missing(self) -> None:
+        with patch("openscreener.stock.importlib.import_module", side_effect=ImportError("No module named pandas")):
+            with self.assertRaisesRegex(ImportError, "pip install pandas"):
+                self.stock.to_dataframe("cash_flow")
+
+    def test_metadata_includes_source_defaults_and_company_name(self) -> None:
+        metadata = self.stock.metadata()
+
+        self.assertEqual(metadata["symbol"], "TCS")
+        self.assertFalse(metadata["consolidated"])
+        self.assertEqual(metadata["source"], "screener.in")
+        self.assertEqual(metadata["currency"], "INR")
+        self.assertEqual(metadata["units"], "crores")
+        self.assertEqual(metadata["company_name"], "Tata Consultancy Services Ltd")
 
 
 if __name__ == "__main__":
