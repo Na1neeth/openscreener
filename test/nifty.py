@@ -1,8 +1,7 @@
-"""Manual helper for checking NIFTY constituents."""
+"""Simple manual helper for testing the Index API."""
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -20,14 +19,44 @@ CONSTITUENTS_LIMIT = 10
 def main() -> int:
     index = Index("NIFTY")
 
-    payload = {
-        "page_type": index.page_type(),
-        "summary": index.summary(),
-        "constituents": index.constituents(limit=CONSTITUENTS_LIMIT),
-    }
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    print("Page type:", index.page_type())
+    print("Available sections:", index.available_sections())
     print()
-    index.pretty(constituents_limit=CONSTITUENTS_LIMIT)
+
+    summary = index.summary()
+    print("Index name:", summary.get("company_name"))
+    print("Current price:", summary.get("current_price"))
+    print("Market cap:", summary.get("ratios", {}).get("market_cap"))
+    print()
+
+    constituents = index.constituents(limit=CONSTITUENTS_LIMIT)
+    print("Returned companies:", constituents.get("returned_companies"))
+    print("Total companies:", constituents.get("total_companies"))
+    print()
+
+    for company in constituents.get("companies", []):
+        print(company.get("symbol"), "-", company.get("name"))
+
+    # Remove the # below to see the full summary dictionary.
+    # print(index.summary())
+
+    # Remove the # below to see the full constituents payload.
+    # print(index.constituents(limit=CONSTITUENTS_LIMIT))
+
+    # Remove the # below to test all().
+    # print(index.all(constituents_limit=CONSTITUENTS_LIMIT))
+
+    # Remove the # below to test to_json().
+    # print(index.to_json(constituents_limit=CONSTITUENTS_LIMIT))
+
+    # Remove the # below to test pretty().
+    # index.pretty(constituents_limit=CONSTITUENTS_LIMIT)
+
+    # Remove the # below to pretty print only one section.
+    # index.print_section("constituents", constituents_limit=CONSTITUENTS_LIMIT)
+
+    # Remove the # below to test metadata().
+    # print(index.metadata())
 
     return 0
 
