@@ -1,36 +1,18 @@
 from contextlib import redirect_stdout
 from io import StringIO
 import json
-import sys
-from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from openscreener import StaticScraper, Stock
-
-
-def load_sections() -> dict[str, str]:
-    fixture_dir = Path(__file__).resolve().parents[1] / "examples" / "html"
-    return {
-        "top": (fixture_dir / "summary.html").read_text(encoding="utf-8"),
-        "analysis": (fixture_dir / "pros_cons.html").read_text(encoding="utf-8"),
-        "peers": (fixture_dir / "peers.html").read_text(encoding="utf-8"),
-        "quarters": (fixture_dir / "quarterly_results.html").read_text(encoding="utf-8"),
-        "profit-loss": (fixture_dir / "profit_loss.html").read_text(encoding="utf-8"),
-        "balance-sheet": (fixture_dir / "balance_sheet.html").read_text(encoding="utf-8"),
-        "cash-flow": (fixture_dir / "cash_flow.html").read_text(encoding="utf-8"),
-        "ratios": (fixture_dir / "ratios.html").read_text(encoding="utf-8"),
-        "shareholding": (fixture_dir / "shareholding.html").read_text(encoding="utf-8"),
-    }
+from openscreener import Stock
+from tests._support import FakeScraper, load_full_html
 
 
 class OpenScreenerTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.sections = load_sections()
-        cls.stock = Stock.from_sections("TCS", cls.sections)
+        cls.page_html = load_full_html()
+        cls.stock = Stock("TCS", scraper=FakeScraper({"TCS": cls.page_html}))
 
     def test_summary_parser_extracts_company_data(self) -> None:
         summary = self.stock.summary()
@@ -73,12 +55,7 @@ class OpenScreenerTestCase(unittest.TestCase):
         self.assertAlmostEqual(shareholding[-1]["promoters"], 71.77)
 
     def test_batch_fetch_reuses_fixture_scraper(self) -> None:
-        scraper = StaticScraper(
-            sections={
-                "TCS": self.sections,
-                "INFY": self.sections,
-            }
-        )
+        scraper = FakeScraper({"TCS": self.page_html, "INFY": self.page_html})
         batch = Stock.batch(["TCS", "INFY"], scraper=scraper)
         payload = batch.fetch("ratios")
 
@@ -106,8 +83,7 @@ class OpenScreenerTestCase(unittest.TestCase):
 
         output = buffer.getvalue()
         self.assertIn("Cash Flow", output)
-        self.assertIn("Operating Cash Flow", output)
-        self.assertIn("Mar 2025", output)
+        self.assertIn("Cash From Operating Activity", output)
 
     def test_pretty_supports_pros_alias(self) -> None:
         buffer = StringIO()
@@ -116,8 +92,8 @@ class OpenScreenerTestCase(unittest.TestCase):
             self.stock.pretty("pros")
 
         output = buffer.getvalue()
-        self.assertIn("Pros", output)
-        self.assertIn("- Company has a good return on equity", output)
+        self.assertIn("PROS", output)
+        self.assertRegex(output, r"[•-] Company has a good return on equity")
 
     def test_print_section_rejects_unsupported_section(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported section"):
@@ -147,6 +123,13 @@ class OpenScreenerTestCase(unittest.TestCase):
         self.assertEqual(metadata["currency"], "INR")
         self.assertEqual(metadata["units"], "crores")
         self.assertEqual(metadata["company_name"], "Tata Consultancy Services Ltd")
+
+    def test_metadata_reports_consolidated_when_enabled(self) -> None:
+        stock = Stock("TCS", scraper=FakeScraper({"TCS": self.page_html}), consolidated=True)
+
+        metadata = stock.metadata()
+
+        self.assertTrue(metadata["consolidated"])
 
 
 if __name__ == "__main__":

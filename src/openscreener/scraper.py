@@ -1,39 +1,19 @@
-"""HTML loaders for live and offline usage."""
+"""HTML loaders for live usage."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Iterable
 
 from .exceptions import OpenScreenerError
-from .parsers._helpers import build_fixture_page
-
-
-@dataclass(slots=True)
-class StaticScraper:
-    """Simple in-memory scraper used for tests and offline fixture parsing."""
-
-    pages: dict[str, str] = field(default_factory=dict)
-    sections: dict[str, dict[str, str]] = field(default_factory=dict)
-
-    def fetch_page(self, symbol: str) -> str:
-        normalized = symbol.upper()
-        if normalized in self.pages:
-            return self.pages[normalized]
-        if normalized in self.sections:
-            return build_fixture_page(self.sections[normalized])
-        raise OpenScreenerError(f"No HTML fixture registered for symbol '{normalized}'.")
-
-    def fetch_pages(self, symbols: Iterable[str]) -> dict[str, str]:
-        return {symbol.upper(): self.fetch_page(symbol) for symbol in symbols}
 
 
 @dataclass(slots=True)
 class PlaywrightScraper:
     """Live HTML loader that fetches Screener pages through Playwright."""
 
-    base_url: str = "https://www.screener.in/company/{symbol}/"
+    base_url: str = "https://www.screener.in/company/{symbol}{path_suffix}"
+    consolidated: bool = False
     headless: bool = True
     timeout_ms: int = 30000
 
@@ -77,22 +57,10 @@ class PlaywrightScraper:
         return _Session()
 
     def _load_page(self, page, symbol: str) -> None:
-        page.goto(self.base_url.format(symbol=symbol.upper()), wait_until="domcontentloaded", timeout=self.timeout_ms)
+        page.goto(self._build_url(symbol), wait_until="domcontentloaded", timeout=self.timeout_ms)
         page.wait_for_load_state("networkidle")
         page.wait_for_selector("#top", timeout=self.timeout_ms)
 
-    @classmethod
-    def from_fixture_directory(cls, fixture_dir: str | Path, symbol: str = "TCS") -> StaticScraper:
-        directory = Path(fixture_dir)
-        section_files = {
-            "top": (directory / "summary.html").read_text(encoding="utf-8"),
-            "analysis": (directory / "pros_cons.html").read_text(encoding="utf-8"),
-            "peers": (directory / "peers.html").read_text(encoding="utf-8"),
-            "quarters": (directory / "quarterly_results.html").read_text(encoding="utf-8"),
-            "profit-loss": (directory / "profit_loss.html").read_text(encoding="utf-8"),
-            "balance-sheet": (directory / "balance_sheet.html").read_text(encoding="utf-8"),
-            "cash-flow": (directory / "cash_flow.html").read_text(encoding="utf-8"),
-            "ratios": (directory / "ratios.html").read_text(encoding="utf-8"),
-            "shareholding": (directory / "shareholding.html").read_text(encoding="utf-8"),
-        }
-        return StaticScraper(sections={symbol.upper(): section_files})
+    def _build_url(self, symbol: str) -> str:
+        path_suffix = "/consolidated/" if self.consolidated else "/"
+        return self.base_url.format(symbol=symbol.upper(), path_suffix=path_suffix)

@@ -19,7 +19,7 @@ from .parsers import (
     parse_shareholding,
     parse_summary,
 )
-from .scraper import PlaywrightScraper, StaticScraper
+from .scraper import PlaywrightScraper
 
 _SECTION_ALIASES = {
     "summary": "summary",
@@ -166,27 +166,28 @@ class Stock:
     """High-level API for one Screener company."""
 
     symbol: str
-    scraper: PlaywrightScraper | StaticScraper | None = None
+    consolidated: bool = False
+    scraper: PlaywrightScraper | None = None
     page_html: str | None = None
 
     def __post_init__(self) -> None:
         self.symbol = self.symbol.upper()
         if self.scraper is None:
-            self.scraper = PlaywrightScraper()
+            self.scraper = PlaywrightScraper(consolidated=self.consolidated)
+        elif isinstance(self.scraper, PlaywrightScraper):
+            self.consolidated = self.scraper.consolidated
 
     @classmethod
-    def from_html(cls, symbol: str, html: str) -> "Stock":
-        return cls(symbol=symbol, page_html=html, scraper=StaticScraper())
-
-    @classmethod
-    def from_sections(cls, symbol: str, sections: dict[str, str]) -> "Stock":
-        return cls(symbol=symbol, scraper=StaticScraper(sections={symbol.upper(): sections}))
-
-    @classmethod
-    def batch(cls, symbols: Iterable[str], scraper: PlaywrightScraper | StaticScraper | None = None):
+    def batch(
+        cls,
+        symbols: Iterable[str],
+        scraper: PlaywrightScraper | None = None,
+        *,
+        consolidated: bool = False,
+    ):
         from .batch_stock import BatchStock
 
-        return BatchStock(list(symbols), scraper=scraper)
+        return BatchStock(list(symbols), consolidated=consolidated, scraper=scraper)
 
     def summary(self) -> dict[str, object]:
         return parse_summary(self._get_page_html())
@@ -293,7 +294,7 @@ class Stock:
 
         payload: dict[str, object] = {
             "symbol": self.symbol,
-            "consolidated": False,
+            "consolidated": self.consolidated,
             "source": "screener.in",
             "currency": "INR",
             "units": "crores",

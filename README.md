@@ -2,18 +2,17 @@
 
 `openscreener` is a Python package for extracting structured financial data from [Screener.in](https://www.screener.in/). It uses Playwright to load live company pages and parser modules to turn Screener sections into normalized Python dictionaries and lists.
 
-The package is built around four public entry points:
+The package is built around three public entry points:
 
 - `Stock` for single-company access
 - `BatchStock` for fetching one or more sections across multiple symbols
 - `PlaywrightScraper` for live page loading
-- `StaticScraper` for offline parsing from saved HTML fixtures
 
 ## Features
 
 - Extracts structured data for summary, analysis, peers, quarterly results, profit and loss, balance sheet, cash flow, ratios, and shareholding
 - Uses a high-level `Stock` API with one method per Screener section
-- Supports live scraping and offline fixture-based development
+- Supports live scraping through Playwright
 - Includes JSON export, pretty terminal output, and optional pandas DataFrame conversion
 - Provides a batch API for fetching the same section set across multiple stocks
 
@@ -21,10 +20,10 @@ The package is built around four public entry points:
 
 `openscreener` requires Python 3.10 or newer.
 
-Install the package:
+Install from PyPI:
 
 ```bash
-pip install -e .
+pip install openscreener
 ```
 
 Install Playwright browser binaries for live scraping:
@@ -77,6 +76,84 @@ stock = Stock("TCS")
 print(stock.to_json())
 ```
 
+## API Reference
+
+### Imports
+
+```python
+from openscreener import BatchStock, PlaywrightScraper, Stock
+```
+
+### `Stock`
+
+```python
+Stock(symbol: str, consolidated: bool = False, scraper: PlaywrightScraper | None = None)
+```
+
+Main methods:
+
+- `summary()`
+- `pros_cons()`
+- `pros()`
+- `cons()`
+- `peers()`
+- `quarterly_results()`
+- `profit_loss()`
+- `balance_sheet()`
+- `cash_flow()`
+- `ratios()`
+- `shareholding(frequency="quarterly")`
+- `shareholding_quarterly()`
+- `shareholding_yearly()`
+- `fetch(sections)`
+- `all()`
+- `available_sections()`
+- `pretty(section=None)`
+- `print_section(section)`
+- `to_json(indent=2)`
+- `to_dataframe(section)`
+- `metadata()`
+
+Batch constructor:
+
+```python
+Stock.batch(
+    symbols,
+    scraper: PlaywrightScraper | None = None,
+    consolidated: bool = False,
+)
+```
+
+### `BatchStock`
+
+```python
+BatchStock(
+    symbols,
+    consolidated: bool = False,
+    scraper: PlaywrightScraper | None = None,
+)
+```
+
+Main method:
+
+- `fetch(sections)`
+
+### `PlaywrightScraper`
+
+```python
+PlaywrightScraper(
+    base_url="https://www.screener.in/company/{symbol}{path_suffix}",
+    consolidated=False,
+    headless=True,
+    timeout_ms=30000,
+)
+```
+
+Main methods:
+
+- `fetch_page(symbol)`
+- `fetch_pages(symbols)`
+
 ## Supported Sections
 
 These names work with `Stock.fetch(...)`:
@@ -128,49 +205,6 @@ print(payload_by_symbol["INFY"]["summary"]["company_name"])
 
 For a single requested section, `BatchStock.fetch(...)` returns one payload per symbol. For multiple sections, it returns a nested dictionary keyed by symbol and then section.
 
-## Offline Fixtures and Parser Development
-
-The repository includes saved section HTML under [`examples/html`](./examples/html) for offline development and parser testing.
-
-Load them directly:
-
-```python
-from openscreener import PlaywrightScraper, Stock
-
-scraper = PlaywrightScraper.from_fixture_directory("examples/html", symbol="TCS")
-stock = Stock("TCS", scraper=scraper)
-
-print(stock.summary()["company_name"])
-print(stock.quarterly_results()[-1]["date"])
-```
-
-Or build a stock from section fragments:
-
-```python
-from pathlib import Path
-
-from openscreener import Stock
-
-fixture_dir = Path("examples/html")
-
-stock = Stock.from_sections(
-    "TCS",
-    {
-        "top": (fixture_dir / "summary.html").read_text(encoding="utf-8"),
-        "analysis": (fixture_dir / "pros_cons.html").read_text(encoding="utf-8"),
-        "peers": (fixture_dir / "peers.html").read_text(encoding="utf-8"),
-        "quarters": (fixture_dir / "quarterly_results.html").read_text(encoding="utf-8"),
-        "profit-loss": (fixture_dir / "profit_loss.html").read_text(encoding="utf-8"),
-        "balance-sheet": (fixture_dir / "balance_sheet.html").read_text(encoding="utf-8"),
-        "cash-flow": (fixture_dir / "cash_flow.html").read_text(encoding="utf-8"),
-        "ratios": (fixture_dir / "ratios.html").read_text(encoding="utf-8"),
-        "shareholding": (fixture_dir / "shareholding.html").read_text(encoding="utf-8"),
-    },
-)
-
-print(stock.ratios()["year"])
-```
-
 ## Data Conventions
 
 - Numeric values are converted to `int` or `float` when possible
@@ -198,7 +232,8 @@ print(stock.summary()["company_name"])
 
 `PlaywrightScraper` defaults to:
 
-- `base_url="https://www.screener.in/company/{symbol}/"`
+- `base_url="https://www.screener.in/company/{symbol}{path_suffix}"`
+- `consolidated=False`
 - `headless=True`
 - `timeout_ms=30000`
 
@@ -233,9 +268,7 @@ Key repository paths:
 ```text
 src/openscreener/         Package source
 src/openscreener/parsers/ Section parsers
-examples/html/            Offline Screener HTML fixtures
 tests/                    Automated tests
-docs/PROJECT_SPEC.md      High-level project spec
 ```
 
 Run the test suite:
