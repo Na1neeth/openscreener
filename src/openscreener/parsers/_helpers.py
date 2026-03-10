@@ -231,22 +231,6 @@ def build_fixture_page(section_html_by_id: dict[str, str]) -> str:
         "cash-flow",
         "ratios",
         "shareholding",
-        "chart",
     ]
     fragments = [section_html_by_id[section_id] for section_id in ordered_ids if section_id in section_html_by_id]
     return "<html><body>" + "\n".join(fragments) + "</body></html>"
-
-
-def normalize_range_label(label: str) -> str:
-    value = clean_text(label).upper()
-    if value == "1YR":
-        return "1Y"
-    if value == "3YR":
-        return "3Y"
-    if value == "5YR":
-        return "5Y"
-    if value == "10YR":
-        return "10Y"
-    if value == "MAX":
-        return "MAX"
-    return value

@@ -8,7 +8,6 @@ from typing import Iterable
 from .parsers import (
     parse_balance_sheet,
     parse_cash_flow,
-    parse_chart,
     parse_peers,
     parse_profit_loss,
     parse_pros_cons,
@@ -34,9 +33,6 @@ _SECTION_ALIASES = {
     "cash_flow": "cash_flow",
     "ratios": "ratios",
     "shareholding": "shareholding",
-    "chart": "pe_ratio_history",
-    "pe_ratio_history": "pe_ratio_history",
-    "peratio": "pe_ratio_history",
 }
 _ALL_SECTIONS = [
     "summary",
@@ -48,7 +44,6 @@ _ALL_SECTIONS = [
     "cash_flow",
     "ratios",
     "shareholding",
-    "pe_ratio_history",
 ]
 
 
@@ -106,14 +101,6 @@ class Stock:
     def shareholding(self, *, frequency: str = "quarterly") -> list[dict[str, object]]:
         return parse_shareholding(self._get_page_html(), frequency=frequency)
 
-    def chart(self) -> dict[str, object]:
-        return parse_chart(self._get_page_html())
-
-    def pe_ratio_history(self, *, range: str = "5Y") -> list[dict[str, object]]:
-        if hasattr(self.scraper, "fetch_pe_ratio_history"):
-            return self.scraper.fetch_pe_ratio_history(self.symbol, range)
-        return []
-
     def fetch(self, sections: str | Iterable[str]) -> dict[str, object]:
         requested = [sections] if isinstance(sections, str) else list(sections)
         results: dict[str, object] = {}
@@ -137,8 +124,6 @@ class Stock:
                 results[section] = self.ratios()
             elif section == "shareholding":
                 results[section] = self.shareholding()
-            elif section == "pe_ratio_history":
-                results[section] = self.pe_ratio_history()
         return results
 
     def all(self) -> dict[str, object]:

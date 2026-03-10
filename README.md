@@ -20,8 +20,7 @@ openscreener/
 │       ├── balance_sheet.html
 │       ├── cash_flow.html
 │       ├── ratios.html
-│       ├── shareholding.html
-│       └── peratio.html
+│       └── shareholding.html
 ├── src/
 │   └── openscreener/
 │       ├── __init__.py
@@ -81,7 +80,6 @@ sections = {
     "cash-flow": (fixture_dir / "cash_flow.html").read_text(),
     "ratios": (fixture_dir / "ratios.html").read_text(),
     "shareholding": (fixture_dir / "shareholding.html").read_text(),
-    "chart": (fixture_dir / "peratio.html").read_text(),
 }
 
 stock = Stock.from_sections("TCS", sections)
@@ -91,6 +89,3 @@ print(stock.summary()["company_name"])
 ## Notes
 
 - Live page loading uses Playwright with lazy imports inside the scraper.
-- The PE ratio fixture only contains chart controls and canvas markup, not the
-  full underlying time-series data. The live scraper includes a tooltip-based
-  fallback for PE history extraction.

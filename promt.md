@@ -55,7 +55,6 @@ The scraper extracts data from the following HTML sections:
 | cash-flow | Cash Flow |
 | ratios | Financial Ratios |
 | shareholding | Shareholding Pattern |
-| chart | PE Ratio History |
 
 ## Project Structure
 
@@ -77,7 +76,6 @@ src/
         cash_flow_parser.py
         ratios_parser.py
         shareholding_parser.py
-        chart_parser.py
 
 examples/
     html/
@@ -91,7 +89,6 @@ examples/
             cash_flow.html
             ratios.html
             shareholding.html
-            chart.html
 
 docs/
     PROJECT_SPEC.md
@@ -302,58 +299,6 @@ Quarterly output:
 ]
 ```
 
-## PE Ratio History
-
-Source section:
-
-```html
-<section id="chart">
-```
-
-Method:
-
-```python
-stock.pe_ratio_history()
-```
-
-Optional:
-
-```python
-stock.pe_ratio_history(range="5Y")
-```
-
-Available ranges:
-
-```text
-1M
-6M
-1Y
-3Y
-5Y
-10Y
-MAX
-```
-
-Output:
-
-```python
-[
-  {
-    "date": "2025-01-10",
-    "pe_ratio": 28.4,
-    "median_pe": 24.1,
-    "eps": 132.8
-  }
-]
-```
-
-Implementation notes:
-
-- Chart is rendered on canvas
-- Prefer extracting **underlying chart data**
-- Avoid OCR
-- Tooltip scraping only as fallback
-
 ## Universal Fetch Method
 
 Agent-friendly method.
@@ -395,8 +340,7 @@ Example:
  "balance-sheet",
  "cash-flow",
  "ratios",
- "shareholding",
- "chart"
+ "shareholding"
 ]
 ```
 

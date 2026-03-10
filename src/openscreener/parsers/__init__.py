@@ -2,7 +2,6 @@
 
 from .balance_sheet_parser import parse_balance_sheet
 from .cash_flow_parser import parse_cash_flow
-from .chart_parser import parse_chart
 from .peers_parser import parse_peers
 from .profit_loss_parser import parse_profit_loss
 from .pros_cons_parser import parse_pros_cons
@@ -14,7 +13,6 @@ from .summary_parser import parse_summary
 __all__ = [
     "parse_balance_sheet",
     "parse_cash_flow",
-    "parse_chart",
     "parse_peers",
     "parse_profit_loss",
     "parse_pros_cons",

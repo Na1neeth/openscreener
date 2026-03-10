@@ -5,7 +5,6 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from openscreener import StaticScraper, Stock
-from openscreener.parsers import parse_chart
 
 
 def load_sections() -> dict[str, str]:
@@ -20,7 +19,6 @@ def load_sections() -> dict[str, str]:
         "cash-flow": (fixture_dir / "cash_flow.html").read_text(encoding="utf-8"),
         "ratios": (fixture_dir / "ratios.html").read_text(encoding="utf-8"),
         "shareholding": (fixture_dir / "shareholding.html").read_text(encoding="utf-8"),
-        "chart": (fixture_dir / "peratio.html").read_text(encoding="utf-8"),
     }
 
 
@@ -82,14 +80,6 @@ class OpenScreenerTestCase(unittest.TestCase):
 
         self.assertEqual(sorted(payload.keys()), ["INFY", "TCS"])
         self.assertEqual(payload["TCS"]["year"], "Mar 2025")
-
-    def test_chart_fixture_exposes_metadata(self) -> None:
-        chart = parse_chart(self.sections["chart"])
-
-        self.assertEqual(chart["active_range"], "5Y")
-        self.assertIn("PE Ratio", chart["available_metrics"])
-        self.assertIn("MAX", chart["available_ranges"])
-        self.assertEqual(chart["data"], [])
 
 
 if __name__ == "__main__":
