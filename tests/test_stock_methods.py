@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from tests._support import FakeScraper, load_full_html
-from openscreener.exceptions import SectionNotFoundError
+from tests._support import FakeScraper, load_full_html, load_index_html
+from openscreener.exceptions import EntityTypeMismatchError, SectionNotFoundError
 from openscreener.scraper import PlaywrightScraper
 from openscreener.stock import Stock
 
@@ -114,3 +114,25 @@ class StockMethodsTestCase(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(scraper.fetch_page_calls, 1)
+
+    def test_page_type_detects_stock_pages(self) -> None:
+        stock = Stock("TCS", scraper=FakeScraper({"TCS": self.page_html}))
+
+        self.assertEqual(stock.page_type(), "stock")
+        self.assertTrue(stock.is_stock())
+        self.assertFalse(stock.is_index())
+
+    def test_page_type_detects_index_pages(self) -> None:
+        stock = Stock("NIFTY", scraper=FakeScraper({"NIFTY": load_index_html()}))
+
+        self.assertEqual(stock.page_type(), "index")
+        self.assertTrue(stock.is_index())
+        self.assertFalse(stock.is_stock())
+
+    def test_stock_rejects_index_pages_with_helpful_error(self) -> None:
+        stock = Stock("NIFTY", scraper=FakeScraper({"NIFTY": load_index_html()}))
+
+        with self.assertRaisesRegex(EntityTypeMismatchError, "Use Index\\('NIFTY'\\) instead"):
+            stock.available_sections()
+        with self.assertRaisesRegex(EntityTypeMismatchError, "Use Index\\('NIFTY'\\) instead"):
+            stock.summary()

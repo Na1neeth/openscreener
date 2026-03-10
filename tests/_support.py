@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -233,12 +234,110 @@ def load_full_html() -> str:
     return build_fixture_page(load_sections())
 
 
+def load_index_html(*, page: int = 1, page_size: int = 50, total_companies: int = 75) -> str:
+    total_pages = max(1, math.ceil(total_companies / page_size))
+    start = ((page - 1) * page_size) + 1
+    end = min(total_companies, page * page_size)
+
+    rows = []
+    for index in range(start, end + 1):
+        rows.append(
+            f"""
+        <tr data-row-company-id="{1000 + index}">
+          <td class="text">{index}.</td>
+          <td class="text"><a href="/company/COMP{index}/" target="_blank">Company {index}</a></td>
+          <td>{1000 + index}.0</td>
+          <td>{20 + (index % 10)}</td>
+          <td>{50000 + index}</td>
+          <td>{1 + (index % 5) / 10:.2f}</td>
+          <td>{200 + index}</td>
+          <td>{5 + (index % 7):.2f}</td>
+          <td>{500 + index}</td>
+          <td>{4 + (index % 6):.2f}</td>
+          <td>{10 + (index % 9):.2f}</td>
+        </tr>
+""".rstrip()
+        )
+
+    return f"""
+<html>
+  <body>
+    <section id="top">
+      <h1>Nifty 50</h1>
+      <div class="font-size-18">
+        <span>₹24,262</span>
+        <span>0.07%</span>
+      </div>
+      <div class="font-size-11">Mar 10, 2026 - close price</div>
+      <div class="about">Benchmark Indian stock market index covering 50 large NSE companies.</div>
+      <ul id="top-ratios">
+        <li><span class="name">Market Cap</span><span class="value">1,93,99,980</span></li>
+        <li><span class="name">Current Price</span><span class="value">₹24,262</span></li>
+        <li><span class="name">High / Low</span><span class="value">₹26,373 / ₹21,744</span></li>
+        <li><span class="name">P/E</span><span class="value">21.2</span></li>
+        <li><span class="name">Price to Book value</span><span class="value">3.30</span></li>
+        <li><span class="name">Dividend Yield</span><span class="value">1.29%</span></li>
+        <li><span class="name">CAGR 1Yr</span><span class="value">7.51%</span></li>
+        <li><span class="name">CAGR 5Yr</span><span class="value">9.83%</span></li>
+        <li><span class="name">CAGR 10Yr</span><span class="value">12.4%</span></li>
+      </ul>
+    </section>
+    <section id="constituents">
+      <h2>Companies in Nifty 50</h2>
+      <div class="sub">{total_companies} results found: Showing page {page} of {total_pages}</div>
+      <table class="data-table">
+        <tbody>
+          <tr>
+            <th>S.No.</th>
+            <th>Name</th>
+            <th>CMP Rs.</th>
+            <th>P/E</th>
+            <th>Mar Cap Rs.Cr.</th>
+            <th>Div Yld %</th>
+            <th>NP Qtr Rs.Cr.</th>
+            <th>Qtr Profit Var %</th>
+            <th>Sales Qtr Rs.Cr.</th>
+            <th>Qtr Sales Var %</th>
+            <th>ROCE %</th>
+          </tr>
+          {''.join(rows)}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td></td>
+            <td>Median: {total_companies} Co.</td>
+            <td>1314.65</td>
+            <td>29.63</td>
+            <td>287277.48</td>
+            <td>0.85</td>
+            <td>2896.38</td>
+            <td>9.62</td>
+            <td>24187.69</td>
+            <td>10.91</td>
+            <td>14.64</td>
+          </tr>
+        </tfoot>
+      </table>
+    </section>
+  </body>
+</html>
+""".strip()
+
+
 class FakeScraper:
-    def __init__(self, pages: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        pages: dict[str, str] | None = None,
+        constituent_pages: dict[str, dict[tuple[int, int], str]] | None = None,
+    ) -> None:
         raw_pages = pages or {"TCS": load_full_html()}
         self.pages = {symbol.upper(): html for symbol, html in raw_pages.items()}
+        self.constituent_pages = {
+            symbol.upper(): dict(page_map) for symbol, page_map in (constituent_pages or {}).items()
+        }
         self.fetch_page_calls = 0
         self.fetch_pages_calls = 0
+        self.fetch_constituent_pages_calls = 0
 
     def fetch_page(self, symbol: str) -> str:
         self.fetch_page_calls += 1
@@ -247,3 +346,10 @@ class FakeScraper:
     def fetch_pages(self, symbols: list[str]) -> dict[str, str]:
         self.fetch_pages_calls += 1
         return {symbol.upper(): self.pages[symbol.upper()] for symbol in symbols}
+
+    def fetch_constituent_pages(self, symbol: str, *, page_numbers: list[int], page_size: int = 50) -> list[str]:
+        self.fetch_constituent_pages_calls += 1
+        symbol_key = symbol.upper()
+        page_map = self.constituent_pages.get(symbol_key, {})
+        fallback = self.pages[symbol_key]
+        return [page_map.get((page_number, page_size), fallback) for page_number in page_numbers]

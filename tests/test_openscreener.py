@@ -4,8 +4,8 @@ import json
 import unittest
 from unittest.mock import patch
 
-from openscreener import Stock
-from tests._support import FakeScraper, load_full_html
+from openscreener import Index, Stock
+from tests._support import FakeScraper, load_full_html, load_index_html
 
 
 class OpenScreenerTestCase(unittest.TestCase):
@@ -120,6 +120,7 @@ class OpenScreenerTestCase(unittest.TestCase):
         self.assertEqual(metadata["symbol"], "TCS")
         self.assertFalse(metadata["consolidated"])
         self.assertEqual(metadata["source"], "screener.in")
+        self.assertEqual(metadata["entity_type"], "stock")
         self.assertEqual(metadata["currency"], "INR")
         self.assertEqual(metadata["units"], "crores")
         self.assertEqual(metadata["company_name"], "Tata Consultancy Services Ltd")
@@ -130,6 +131,30 @@ class OpenScreenerTestCase(unittest.TestCase):
         metadata = stock.metadata()
 
         self.assertTrue(metadata["consolidated"])
+
+    def test_index_summary_parser_extracts_useful_metrics(self) -> None:
+        index = Index("NIFTY", scraper=FakeScraper({"NIFTY": load_index_html()}))
+
+        summary = index.summary()
+
+        self.assertEqual(summary["company_name"], "Nifty 50")
+        self.assertEqual(summary["current_price"], 24262)
+        self.assertEqual(summary["ratios"]["market_cap"], 19399980)
+        self.assertEqual(summary["ratios"]["price_to_book_value"], 3.3)
+        self.assertEqual(summary["ratios"]["cagr_10yr"], 12.4)
+
+    def test_index_pretty_renders_constituents_section(self) -> None:
+        index = Index("NIFTY", scraper=FakeScraper({"NIFTY": load_index_html()}))
+        buffer = StringIO()
+
+        with redirect_stdout(buffer):
+            index.pretty("constituents", constituents_limit=3)
+
+        output = buffer.getvalue()
+        self.assertIn("Constituents", output)
+        self.assertIn("3 of 75 companies", output)
+        self.assertIn("Median: 75 Co.", output)
+        self.assertNotIn("Company 4", output)
 
 
 if __name__ == "__main__":

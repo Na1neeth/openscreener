@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import importlib
 import json
+import math
 from dataclasses import dataclass
 from typing import Iterable
 
-from .exceptions import SectionNotFoundError
+from .exceptions import EntityTypeMismatchError, SectionNotFoundError
 from .parsers import (
     parse_balance_sheet,
     parse_cash_flow,
+    parse_constituents,
     parse_peers,
     parse_profit_loss,
     parse_pros_cons,
@@ -36,8 +38,10 @@ _SECTION_ALIASES = {
     "cash_flow": "cash_flow",
     "ratios": "ratios",
     "shareholding": "shareholding",
+    "constituents": "constituents",
+    "companies": "constituents",
 }
-_ALL_SECTIONS = [
+_STOCK_SECTIONS = [
     "summary",
     "analysis",
     "peers",
@@ -47,6 +51,10 @@ _ALL_SECTIONS = [
     "cash_flow",
     "ratios",
     "shareholding",
+]
+_INDEX_SECTIONS = [
+    "summary",
+    "constituents",
 ]
 _HELPER_SECTION_ALIASES = {
     **_SECTION_ALIASES,
@@ -68,6 +76,17 @@ _TOP_CARD_METRICS = [
     ("roe_percent", "ROE"),
     ("face_value", "Face Value"),
 ]
+_INDEX_TOP_CARD_METRICS = [
+    ("market_cap", "Market Cap"),
+    ("current_price", "Current Price"),
+    ("high_low", "High / Low"),
+    ("p_e", "P/E"),
+    ("price_to_book_value", "Price To Book"),
+    ("dividend_yield", "Dividend Yield"),
+    ("cagr_1yr", "CAGR 1Y"),
+    ("cagr_5yr", "CAGR 5Y"),
+    ("cagr_10yr", "CAGR 10Y"),
+]
 _PEER_COLUMNS = [
     ("s_no", "S.No"),
     ("name", "Name"),
@@ -78,6 +97,20 @@ _PEER_COLUMNS = [
     ("np_qtr_cr", "NP Qtr"),
     ("qtr_profit_var", "Qtr Profit Var"),
     ("sales_qtr_cr", "Sales Qtr"),
+    ("qtr_sales_var", "Qtr Sales Var"),
+    ("roce_percent", "ROCE"),
+]
+_CONSTITUENT_COLUMNS = [
+    ("s_no", "S.No"),
+    ("name", "Name"),
+    ("symbol", "Symbol"),
+    ("current_price", "CMP"),
+    ("p_e", "P/E"),
+    ("market_cap", "Mar Cap"),
+    ("dividend_yield", "Div Yld"),
+    ("net_profit_quarter", "NP Qtr"),
+    ("qtr_profit_var", "Qtr Profit Var"),
+    ("sales_quarter", "Sales Qtr"),
     ("qtr_sales_var", "Qtr Sales Var"),
     ("roce_percent", "ROCE"),
 ]
@@ -157,8 +190,35 @@ _PERCENT_KEYS = {
     "government",
     "public",
     "dividend_payout",
+    "cagr_1yr",
+    "cagr_5yr",
+    "cagr_10yr",
 }
 _CURRENCY_KEYS = {"current_price", "cmp", "book_value", "face_value"}
+_STOCK_PAGE_MARKERS = (
+    'id="analysis"',
+    "id='analysis'",
+    'id="peers"',
+    "id='peers'",
+    'id="quarters"',
+    "id='quarters'",
+    'id="profit-loss"',
+    "id='profit-loss'",
+    'id="balance-sheet"',
+    "id='balance-sheet'",
+    'id="cash-flow"',
+    "id='cash-flow'",
+    'id="ratios"',
+    "id='ratios'",
+    'id="shareholding"',
+    "id='shareholding'",
+)
+_INDEX_PAGE_MARKERS = (
+    'id="constituents"',
+    "id='constituents'",
+    ">Constituents<",
+    "Companies in ",
+)
 
 
 @dataclass(slots=True)
@@ -169,6 +229,8 @@ class Stock:
     consolidated: bool = False
     scraper: PlaywrightScraper | None = None
     page_html: str | None = None
+    _page_type: str | None = None
+    _constituent_pages: dict[tuple[int, int], str] | None = None
 
     def __post_init__(self) -> None:
         self.symbol = self.symbol.upper()
@@ -190,9 +252,11 @@ class Stock:
         return BatchStock(list(symbols), consolidated=consolidated, scraper=scraper)
 
     def summary(self) -> dict[str, object]:
+        self._require_section_available("summary")
         return parse_summary(self._get_page_html())
 
     def pros_cons(self) -> dict[str, list[str]]:
+        self._require_section_available("analysis")
         return parse_pros_cons(self._get_page_html())
 
     def pros(self) -> list[str]:
@@ -206,25 +270,54 @@ class Stock:
         return self.pros_cons().get("cons", [])
 
     def peers(self) -> dict[str, object]:
+        self._require_section_available("peers")
         return parse_peers(self._get_page_html())
 
     def quarterly_results(self) -> list[dict[str, object]]:
+        self._require_section_available("quarterly_results")
         return parse_quarterly_results(self._get_page_html())
 
     def profit_loss(self) -> list[dict[str, object]]:
+        self._require_section_available("profit_loss")
         return parse_profit_loss(self._get_page_html())
 
     def balance_sheet(self) -> list[dict[str, object]]:
+        self._require_section_available("balance_sheet")
         return parse_balance_sheet(self._get_page_html())
 
     def cash_flow(self) -> list[dict[str, object]]:
+        self._require_section_available("cash_flow")
         return parse_cash_flow(self._get_page_html())
 
     def ratios(self) -> dict[str, object]:
+        self._require_section_available("ratios")
         return parse_ratios(self._get_page_html())
 
     def shareholding(self, *, frequency: str = "quarterly") -> list[dict[str, object]]:
+        self._require_section_available("shareholding")
         return parse_shareholding(self._get_page_html(), frequency=frequency)
+
+    def constituents(self, *, limit: int | None = None) -> dict[str, object]:
+        """Return parsed index constituents, optionally capped to the requested count."""
+
+        self._require_section_available("constituents")
+        first_page = self._parse_constituent_page(page_number=1, page_size=50)
+        total_companies = int(first_page.get("total_companies") or 0)
+        wanted = total_companies if limit is None else max(0, min(limit, total_companies))
+        companies = list(first_page.get("companies") or [])
+        if wanted and len(companies) < wanted:
+            page_size = 50
+            pages_needed = math.ceil(wanted / page_size)
+            for page_number in range(2, pages_needed + 1):
+                page_payload = self._parse_constituent_page(page_number=page_number, page_size=page_size)
+                companies.extend(page_payload.get("companies") or [])
+
+        constituents = dict(first_page)
+        constituents["companies"] = companies[:wanted] if wanted or limit == 0 else companies
+        constituents["returned_companies"] = len(constituents["companies"])
+        if limit is not None:
+            constituents["requested_limit"] = max(limit, 0)
+        return constituents
 
     def shareholding_quarterly(self) -> list[dict[str, object]]:
         """Return quarterly shareholding data."""
@@ -236,40 +329,64 @@ class Stock:
 
         return self.shareholding(frequency="yearly")
 
-    def to_json(self, indent: int = 2) -> str:
+    def to_json(self, indent: int = 2, *, constituents_limit: int | None = None) -> str:
         """Return the full stock payload as formatted JSON text."""
 
-        return json.dumps(self.all(), indent=indent, ensure_ascii=False)
+        return json.dumps(self.all(constituents_limit=constituents_limit), indent=indent, ensure_ascii=False)
 
-    def pretty(self, section: str | None = None) -> None:
+    def page_type(self) -> str:
+        """Return the detected Screener page type: stock, index, or unknown."""
+
+        if self._page_type is None:
+            self._page_type = self._detect_page_type(self._get_page_html())
+        return self._page_type
+
+    def is_stock(self) -> bool:
+        """Return True when the current Screener page looks like a stock page."""
+
+        return self.page_type() == "stock"
+
+    def is_index(self) -> bool:
+        """Return True when the current Screener page looks like an index page."""
+
+        return self.page_type() == "index"
+
+    def pretty(self, section: str | None = None, *, constituents_limit: int | None = None) -> None:
         """Print one section or the full payload in a human-friendly layout."""
 
-        if self._pretty_rich(section=section):
+        if self._pretty_rich(section=section, constituents_limit=constituents_limit):
             return
-        self._pretty_plain(section=section)
+        self._pretty_plain(section=section, constituents_limit=constituents_limit)
 
-    def _pretty_plain(self, section: str | None = None) -> None:
+    def _pretty_plain(self, section: str | None = None, *, constituents_limit: int | None = None) -> None:
         """Fallback plain-text pretty printer used when Rich is unavailable."""
 
+        section_names = self.available_sections()
         if section is None:
             try:
-                payload = self.all()
+                payload = self.all(constituents_limit=constituents_limit)
             except SectionNotFoundError:
-                payload = {name: self._load_helper_section(name, allow_missing=True) for name in _ALL_SECTIONS}
+                payload = {
+                    name: self._load_helper_section(name, allow_missing=True, constituents_limit=constituents_limit)
+                    for name in section_names
+                }
 
-            for index, section_name in enumerate(_ALL_SECTIONS):
+            for index, section_name in enumerate(section_names):
                 if index:
                     print()
                 self._print_formatted_section(section_name, payload.get(section_name))
             return
 
         canonical = self._canonical_helper_section(section)
-        self._print_formatted_section(canonical, self._load_helper_section(canonical, allow_missing=True))
+        self._print_formatted_section(
+            canonical,
+            self._load_helper_section(canonical, allow_missing=True, constituents_limit=constituents_limit),
+        )
 
-    def print_section(self, section: str) -> None:
+    def print_section(self, section: str, *, constituents_limit: int | None = None) -> None:
         """Print one validated section in a human-friendly layout."""
 
-        self.pretty(section=self._canonical_helper_section(section))
+        self.pretty(section=self._canonical_helper_section(section), constituents_limit=constituents_limit)
 
     def to_dataframe(self, section: str):
         """Convert a single section into a pandas DataFrame."""
@@ -283,6 +400,8 @@ class Stock:
         section_data = self._load_helper_section(canonical, allow_missing=True)
         if canonical == "peers" and isinstance(section_data, dict) and isinstance(section_data.get("companies"), list):
             return pd.DataFrame(section_data["companies"])
+        if canonical == "constituents" and isinstance(section_data, dict) and isinstance(section_data.get("companies"), list):
+            return pd.DataFrame(section_data["companies"])
         if isinstance(section_data, list) and all(isinstance(item, dict) for item in section_data):
             return pd.DataFrame(section_data)
         if isinstance(section_data, dict):
@@ -292,10 +411,12 @@ class Stock:
     def metadata(self) -> dict[str, object]:
         """Return package and source metadata for the current stock."""
 
+        self._require_expected_page_type()
         payload: dict[str, object] = {
             "symbol": self.symbol,
             "consolidated": self.consolidated,
             "source": "screener.in",
+            "entity_type": self.page_type(),
             "currency": "INR",
             "units": "crores",
         }
@@ -307,11 +428,14 @@ class Stock:
             payload["company_name"] = summary["company_name"]
         return payload
 
-    def fetch(self, sections: str | Iterable[str]) -> dict[str, object]:
+    def fetch(self, sections: str | Iterable[str], *, constituents_limit: int | None = None) -> dict[str, object]:
         requested = [sections] if isinstance(sections, str) else list(sections)
         results: dict[str, object] = {}
+        supported_sections = set(self.available_sections())
         for raw_name in requested:
             section = self._canonical_section(raw_name)
+            if section not in supported_sections:
+                raise KeyError(f"Section '{section}' is not available for {self.page_type()} pages.")
             if section == "summary":
                 results[section] = self.summary()
             elif section == "analysis":
@@ -330,13 +454,16 @@ class Stock:
                 results[section] = self.ratios()
             elif section == "shareholding":
                 results[section] = self.shareholding()
+            elif section == "constituents":
+                results[section] = self.constituents(limit=constituents_limit)
         return results
 
-    def all(self) -> dict[str, object]:
-        return self.fetch(_ALL_SECTIONS)
+    def all(self, *, constituents_limit: int | None = None) -> dict[str, object]:
+        return self.fetch(self.available_sections(), constituents_limit=constituents_limit)
 
     def available_sections(self) -> list[str]:
-        return list(_ALL_SECTIONS)
+        self._require_expected_page_type()
+        return list(self._supported_sections())
 
     def _canonical_section(self, name: str) -> str:
         key = name.strip().lower()
@@ -351,7 +478,40 @@ class Stock:
             raise ValueError(f"Unsupported section '{name}'. Supported sections: {supported}.")
         return _HELPER_SECTION_ALIASES[key]
 
-    def _load_helper_section(self, section: str, *, allow_missing: bool = False) -> object:
+    def _expected_page_type(self) -> str:
+        return "stock"
+
+    def _supported_sections(self) -> list[str]:
+        return list(_STOCK_SECTIONS)
+
+    def _require_expected_page_type(self) -> None:
+        expected = self._expected_page_type()
+        actual = self.page_type()
+        if actual == expected:
+            return
+        if actual == "unknown":
+            if expected == "stock":
+                return
+            raise EntityTypeMismatchError(f"'{self.symbol}' did not resolve to a {expected} page on Screener.in.")
+
+        article = "an" if actual == "index" else "a"
+        suggested_class = "Index" if actual == "index" else "Stock"
+        raise EntityTypeMismatchError(
+            f"'{self.symbol}' resolved to {article} {actual} page. Use {suggested_class}('{self.symbol}') instead."
+        )
+
+    def _require_section_available(self, section: str) -> None:
+        self._require_expected_page_type()
+        if section not in self._supported_sections():
+            raise KeyError(f"Section '{section}' is not available for {self._expected_page_type()} pages.")
+
+    def _load_helper_section(
+        self,
+        section: str,
+        *,
+        allow_missing: bool = False,
+        constituents_limit: int | None = None,
+    ) -> object:
         try:
             if section == "pros":
                 return self.pros()
@@ -361,34 +521,44 @@ class Stock:
                 return self.shareholding_quarterly()
             if section == "shareholding_yearly":
                 return self.shareholding_yearly()
-            if section in _ALL_SECTIONS:
-                return self.fetch(section).get(section)
-        except SectionNotFoundError:
+            if section in _STOCK_SECTIONS or section in _INDEX_SECTIONS:
+                return self.fetch(section, constituents_limit=constituents_limit).get(section)
+        except (SectionNotFoundError, KeyError):
             if allow_missing:
                 return None
             raise
         return None
 
-    def _pretty_rich(self, section: str | None = None) -> bool:
+    def _pretty_rich(self, section: str | None = None, *, constituents_limit: int | None = None) -> bool:
         rich = self._get_rich_components()
         if rich is None:
             return False
 
         console = rich["Console"]()
+        section_names = self.available_sections()
         if section is None:
             try:
-                payload = self.all()
+                payload = self.all(constituents_limit=constituents_limit)
             except SectionNotFoundError:
-                payload = {name: self._load_helper_section(name, allow_missing=True) for name in _ALL_SECTIONS}
+                payload = {
+                    name: self._load_helper_section(name, allow_missing=True, constituents_limit=constituents_limit)
+                    for name in section_names
+                }
 
-            for index, section_name in enumerate(_ALL_SECTIONS):
+            for index, section_name in enumerate(section_names):
                 if index:
                     console.print(rich["Rule"](style="grey35"))
                 console.print(self._render_section_rich(section_name, payload.get(section_name), rich))
             return True
 
         canonical = self._canonical_helper_section(section)
-        console.print(self._render_section_rich(canonical, self._load_helper_section(canonical, allow_missing=True), rich))
+        console.print(
+            self._render_section_rich(
+                canonical,
+                self._load_helper_section(canonical, allow_missing=True, constituents_limit=constituents_limit),
+                rich,
+            )
+        )
         return True
 
     def _get_rich_components(self) -> dict[str, object] | None:
@@ -414,7 +584,10 @@ class Stock:
 
     def _render_section_rich(self, section: str, payload: object, rich: dict[str, object]):
         if section == "summary":
-            return self._render_top_card(payload if isinstance(payload, dict) else {}, rich)
+            summary = payload if isinstance(payload, dict) else {}
+            if self.is_index():
+                return self._render_index_top_card(summary, rich)
+            return self._render_top_card(summary, rich)
         if section == "analysis":
             return self._render_pros_cons(self.pros(), self.cons(), rich)
         if section == "pros":
@@ -423,6 +596,8 @@ class Stock:
             return self._render_list_panel("CONS", payload, rich, border_style="red")
         if section == "peers":
             return self._render_peers_section(payload if isinstance(payload, dict) else {}, rich)
+        if section == "constituents":
+            return self._render_constituents_section(payload if isinstance(payload, dict) else {}, rich)
         if section == "quarterly_results":
             return self._render_matrix_section(
                 title="Quarterly Results",
@@ -522,6 +697,49 @@ class Stock:
             body.extend([Rule(style="grey30"), Columns(narrative_panels, expand=True)])
         return Panel(Group(*body), title="Overview", border_style="bright_blue", padding=(1, 1))
 
+    def _render_index_top_card(self, summary: dict[str, object], rich: dict[str, object]):
+        Columns = rich["Columns"]
+        Group = rich["Group"]
+        Panel = rich["Panel"]
+        Rule = rich["Rule"]
+        Table = rich["Table"]
+        Text = rich["Text"]
+
+        title = Text(summary.get("company_name") or self.symbol, style="bold white")
+        price_line = Text(self._format_currency(summary.get("current_price")), style="bold bright_white")
+        change = summary.get("price_change_percent")
+        if isinstance(change, (int, float)):
+            sign = "+" if change > 0 else ""
+            style = "green" if change > 0 else "red" if change < 0 else "yellow"
+            price_line.append(f"  {sign}{self._format_number(change)}%", style=style)
+        price_date = summary.get("price_date")
+        if price_date:
+            price_line.append(f"  {price_date}", style="dim")
+
+        metrics = Table.grid(expand=True)
+        metrics.add_column(style="dim")
+        metrics.add_column()
+        metrics.add_column(style="dim")
+        metrics.add_column()
+        metrics.add_column(style="dim")
+        metrics.add_column()
+        ratios = summary.get("ratios") if isinstance(summary.get("ratios"), dict) else {}
+        for metric_slice in [
+            list(_INDEX_TOP_CARD_METRICS[index : index + 3]) for index in range(0, len(_INDEX_TOP_CARD_METRICS), 3)
+        ]:
+            row: list[str] = []
+            for key, label in metric_slice:
+                value = ratios.get(key) if isinstance(ratios, dict) else None
+                row.extend([label, self._format_display_value(key, value)])
+            while len(row) < 6:
+                row.extend(["", ""])
+            metrics.add_row(*row)
+
+        body = [title, price_line, Rule(style="grey30"), Panel(metrics, title="Index Metrics", border_style="blue")]
+        if summary.get("about"):
+            body.extend([Rule(style="grey30"), Columns([Panel(str(summary["about"]), title="About", border_style="cyan")], expand=True)])
+        return Panel(Group(*body), title="Index Overview", border_style="bright_blue", padding=(1, 1))
+
     def _render_pros_cons(self, pros: list[str], cons: list[str], rich: dict[str, object]):
         Columns = rich["Columns"]
         Group = rich["Group"]
@@ -559,6 +777,43 @@ class Stock:
             for key, label in _PEER_COLUMNS[2:]:
                 if key in median:
                     summary.add_row(label, self._format_display_value(key, median.get(key)))
+            renderables.append(Panel(summary, title="Median", border_style="grey50"))
+        return Group(*renderables)
+
+    def _render_constituents_section(self, payload: dict[str, object], rich: dict[str, object]):
+        Group = rich["Group"]
+        Panel = rich["Panel"]
+        Table = rich["Table"]
+
+        companies = payload.get("companies") if isinstance(payload.get("companies"), list) else []
+        table = Table(expand=True, header_style="bold white")
+        for _, label in _CONSTITUENT_COLUMNS:
+            table.add_column(label, justify="left" if label in {"Name", "Symbol"} else "right")
+        for company in companies:
+            table.add_row(*[self._format_display_value(key, company.get(key)) for key, _ in _CONSTITUENT_COLUMNS])
+
+        title_bits = []
+        returned = payload.get("returned_companies")
+        total = payload.get("total_companies")
+        if isinstance(returned, int) and isinstance(total, int) and total:
+            title_bits.append(f"{returned} of {total} companies")
+        elif isinstance(returned, int):
+            title_bits.append(f"{returned} companies")
+        if isinstance(payload.get("page"), int) and isinstance(payload.get("total_pages"), int):
+            title_bits.append(f"pages {payload['page']}/{payload['total_pages']}")
+
+        renderables = [Panel(table, title="Constituents", subtitle=" | ".join(title_bits), border_style="blue")]
+        median = payload.get("median")
+        if isinstance(median, dict):
+            summary = Table.grid(expand=True)
+            summary.add_column(style="dim")
+            summary.add_column()
+            label = median.get("label")
+            if label:
+                summary.add_row("Label", str(label))
+            for key, display in _CONSTITUENT_COLUMNS[3:]:
+                if key in median:
+                    summary.add_row(display, self._format_display_value(key, median.get(key)))
             renderables.append(Panel(summary, title="Median", border_style="grey50"))
         return Group(*renderables)
 
@@ -818,6 +1073,41 @@ class Stock:
         if isinstance(value, (dict, list)):
             return json.dumps(value, ensure_ascii=False)
         return str(value)
+
+    def _parse_constituent_page(self, *, page_number: int, page_size: int) -> dict[str, object]:
+        html = self._get_constituent_page_html(page_number=page_number, page_size=page_size)
+        return parse_constituents(html)
+
+    def _get_constituent_page_html(self, *, page_number: int, page_size: int) -> str:
+        if self._constituent_pages is None:
+            self._constituent_pages = {}
+
+        cache_key = (page_number, page_size)
+        if cache_key in self._constituent_pages:
+            return self._constituent_pages[cache_key]
+
+        if page_number == 1 and page_size == 50 and self.page_type() == "index":
+            fetch_constituent_pages = getattr(self.scraper, "fetch_constituent_pages", None)
+            if callable(fetch_constituent_pages):
+                html = fetch_constituent_pages(self.symbol, page_numbers=[1], page_size=page_size)[0]
+            else:
+                html = self._get_page_html()
+        else:
+            fetch_constituent_pages = getattr(self.scraper, "fetch_constituent_pages", None)
+            if callable(fetch_constituent_pages):
+                html = fetch_constituent_pages(self.symbol, page_numbers=[page_number], page_size=page_size)[0]
+            else:
+                html = self._get_page_html()
+
+        self._constituent_pages[cache_key] = html
+        return html
+
+    def _detect_page_type(self, html: str) -> str:
+        if any(marker in html for marker in _STOCK_PAGE_MARKERS):
+            return "stock"
+        if any(marker in html for marker in _INDEX_PAGE_MARKERS):
+            return "index"
+        return "unknown"
 
     def _get_page_html(self) -> str:
         if self.page_html is None:
