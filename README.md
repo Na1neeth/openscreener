@@ -1,34 +1,34 @@
 # openscreener
 
-`openscreener` is a Python package for extracting structured financial data from [Screener.in](https://www.screener.in/). It uses Playwright to load live company and index pages and parser modules to turn Screener sections into normalized Python dictionaries and lists.
+`openscreener` is a Python package for extracting structured financial data from [Screener.in](https://www.screener.in/). It uses Playwright to load live stock and index pages and parser modules to convert Screener sections into normalized Python dictionaries and lists.
 
-The package is built around three public entry points:
+The public API is built around four entry points:
 
-- `Stock` for single-company access
-- `Index` for single-index access
-- `BatchStock` for fetching one or more sections across multiple symbols
+- `Stock` for one stock page
+- `Index` for one index page
+- `BatchStock` for fetching the same sections across many stocks
 - `PlaywrightScraper` for live page loading
 
 ## Features
 
-- Extracts structured data for stock summary, analysis, peers, quarterly results, profit and loss, balance sheet, cash flow, ratios, and shareholding
-- Extracts structured index summary and constituents data
-- Uses a high-level `Stock` API with one method per Screener section
-- Supports live scraping through Playwright
-- Includes JSON export, pretty terminal output, and optional pandas DataFrame conversion
-- Provides a batch API for fetching the same section set across multiple stocks
+- Extracts stock summary, analysis, peers, quarterly results, profit and loss, balance sheet, cash flow, ratios, and shareholding
+- Extracts index summary and constituents data
+- Supports pretty terminal output and JSON export
+- Supports pandas DataFrame conversion for tabular sections
+- Supports batch fetching across multiple stock symbols
+- Handles index constituent pagination across multiple Screener pages
 
 ## Installation
 
-`openscreener` requires Python 3.10 or newer.
+`openscreener` requires Python `3.10+`.
 
-Install from PyPI:
+Install the package:
 
 ```bash
 pip install openscreener
 ```
 
-Install Playwright browser binaries for live scraping:
+Install Playwright browser binaries:
 
 ```bash
 python -m playwright install chromium
@@ -48,17 +48,16 @@ pip install pandas
 
 ## Quick Start
 
-`Stock(symbol)` uses the live Playwright scraper by default.
+### Stock example
 
 ```python
-from openscreener import Index, Stock
+from openscreener import Stock
 
 stock = Stock("TCS")
 
-summary = stock.summary()
-print(summary["company_name"])
-print(summary["current_price"])
-print(summary["ratios"]["market_cap"])
+print(stock.summary()["company_name"])
+print(stock.summary()["current_price"])
+print(stock.summary()["ratios"]["market_cap"])
 
 analysis = stock.pros_cons()
 print(analysis["pros"][0])
@@ -66,11 +65,36 @@ print(analysis["pros"][0])
 payload = stock.fetch(["summary", "ratios", "shareholding"])
 print(payload["ratios"]["roce_percent"])
 
+stock.pretty("summary")
 stock.pretty("cash_flow")
+```
 
-index = Index("NIFTY")
+### Index example
+
+```python
+from openscreener import Index
+
+index = Index("CNX500")
+
+print(index.page_type())  # index
 print(index.summary()["company_name"])
-print(index.constituents(limit=5)["returned_companies"])
+
+payload = index.constituents(limit=70)
+print(payload["returned_companies"])
+
+index.pretty("constituents", constituents_limit=70)
+```
+
+### Batch example
+
+```python
+from openscreener import Stock
+
+batch = Stock.batch(["TCS", "INFY"])
+payload = batch.fetch("summary")
+
+print(payload["TCS"]["company_name"])
+print(payload["INFY"]["company_name"])
 ```
 
 Export everything as JSON:
@@ -134,9 +158,9 @@ Main methods:
 - `page_type()`
 - `is_stock()`
 - `is_index()`
-- `pretty(section=None)`
-- `print_section(section)`
-- `to_json(indent=2)`
+- `pretty(section=None, constituents_limit=None)`
+- `print_section(section, constituents_limit=None)`
+- `to_json(indent=2, constituents_limit=None)`
 - `to_dataframe(section)`
 - `metadata()`
 
@@ -160,16 +184,6 @@ Main methods:
 - `to_dataframe(section)`
 - `metadata()`
 
-Batch constructor:
-
-```python
-Stock.batch(
-    symbols,
-    scraper: PlaywrightScraper | None = None,
-    consolidated: bool = False,
-)
-```
-
 ### `BatchStock`
 
 ```python
@@ -183,6 +197,14 @@ BatchStock(
 Main method:
 
 - `fetch(sections)`
+
+You can also construct it through:
+
+```python
+from openscreener import Stock
+
+batch = Stock.batch(["TCS", "INFY"])
+```
 
 ### `PlaywrightScraper`
 
@@ -203,9 +225,9 @@ Main methods:
 
 ## Supported Sections
 
-Stock page sections:
+### Stock sections
 
-| Canonical section | Accepted aliases | Stock method | Return shape |
+| Canonical section | Accepted aliases | Method | Return shape |
 | --- | --- | --- | --- |
 | `summary` | `summary` | `summary()` | `dict` |
 | `analysis` | `analysis`, `pros_cons` | `pros_cons()` | `dict` |
@@ -217,14 +239,16 @@ Stock page sections:
 | `ratios` | `ratios` | `ratios()` | `dict` |
 | `shareholding` | `shareholding` | `shareholding()` | `list[dict]` |
 
-Index page sections:
+### Index sections
 
-| Canonical section | Accepted aliases | Index method | Return shape |
+| Canonical section | Accepted aliases | Method | Return shape |
 | --- | --- | --- | --- |
 | `summary` | `summary` | `summary()` | `dict` |
 | `constituents` | `constituents`, `companies` | `constituents(limit=None)` | `dict` |
 
-Helper-only section names supported by `pretty()`, `print_section()`, and `to_dataframe()`:
+### Helper-only section names
+
+These work with `pretty()`, `print_section()`, and `to_dataframe()` where applicable:
 
 - `pros`
 - `cons`
@@ -233,21 +257,20 @@ Helper-only section names supported by `pretty()`, `print_section()`, and `to_da
 
 ## API Notes
 
-- `stock.page_type()` returns `stock`, `index`, or `unknown`
-- `Index("NIFTY")` is the preferred public API for index pages
-- `Stock("NIFTY")` now raises a helpful error telling you to use `Index("NIFTY")`
+- `Stock("TCS")` is for stock pages
+- `Index("CNX500")` or `Index("NIFTY")` is for index pages
+- `page_type()` returns `stock`, `index`, or `unknown`
+- `available_sections()` depends on whether the page is a stock or index
 - `stock.fetch("ratios")` returns `{"ratios": {...}}`
-- `stock.all()` fetches every stock section
-- `index.all(constituents_limit=10)` limits index constituents in the output
-- `stock.available_sections()` returns stock section names, while `index.available_sections()` returns index section names
-- `stock.pros()` and `stock.cons()` return plain string lists from the analysis block
-- `stock.shareholding()` defaults to quarterly data
-- `stock.shareholding_yearly()` fetches yearly shareholding history
-- `stock.metadata()` returns source metadata such as symbol, currency, units, and company name when available
+- `index.all(constituents_limit=100)` limits the returned constituents in the payload
+- `summary()["ratios"]` contains top-card metrics such as market cap, current price, high/low, and similar values
+- `ratios()` returns the latest annual ratios row, not the whole historical ratios table
+- `shareholding()` defaults to quarterly shareholding data
+- `metadata()` returns source metadata such as symbol, entity type, currency, units, and company/index name when available
 
 ## Batch Fetching
 
-Use `Stock.batch(...)` when you want the same section set for multiple symbols.
+Use `BatchStock` when you want the same sections for multiple stock symbols.
 
 ```python
 from openscreener import Stock
@@ -261,39 +284,10 @@ payload_by_symbol = batch.fetch(["summary", "shareholding"])
 print(payload_by_symbol["INFY"]["summary"]["company_name"])
 ```
 
-For a single requested section, `BatchStock.fetch(...)` returns one payload per symbol. For multiple sections, it returns a nested dictionary keyed by symbol and then section.
+Behavior:
 
-## Data Conventions
-
-- Numeric values are converted to `int` or `float` when possible
-- Missing values are returned as `None`
-- Period labels are preserved as strings such as `Dec 2025`, `Mar 2025`, or `TTM`
-- Summary metrics from the Screener top card are exposed under `summary()["ratios"]`
-- `ratios()` returns the latest available annual ratios row, not the full ratios history
-- Monetary values and units follow Screener's presentation, with metadata defaulting to `INR` and `crores`
-
-## Scraper Configuration
-
-The live scraper can be customized:
-
-```python
-from openscreener import PlaywrightScraper, Stock
-
-scraper = PlaywrightScraper(
-    headless=False,
-    timeout_ms=60000,
-)
-
-stock = Stock("TCS", scraper=scraper)
-print(stock.summary()["company_name"])
-```
-
-`PlaywrightScraper` defaults to:
-
-- `base_url="https://www.screener.in/company/{symbol}{path_suffix}"`
-- `consolidated=False`
-- `headless=True`
-- `timeout_ms=30000`
+- If you request one section, each symbol maps directly to that section payload
+- If you request multiple sections, each symbol maps to a nested section dictionary
 
 ## Output Helpers
 
@@ -304,7 +298,17 @@ from openscreener import Stock
 
 stock = Stock("TCS")
 stock.pretty()
+stock.pretty("summary")
 stock.print_section("pros")
+```
+
+Index pretty-printing works the same way:
+
+```python
+from openscreener import Index
+
+index = Index("CNX500")
+index.pretty("constituents", constituents_limit=50)
 ```
 
 Convert a section to a pandas DataFrame:
@@ -317,7 +321,32 @@ frame = stock.to_dataframe("peers")
 print(frame.head())
 ```
 
-If pandas is not installed, `to_dataframe()` raises an `ImportError` with an installation hint.
+If pandas is not installed, `to_dataframe()` raises an `ImportError`.
+
+## Data Conventions
+
+- Numeric values are converted to `int` or `float` where possible
+- Missing values are returned as `None`
+- Period labels stay as strings such as `Dec 2025`, `Mar 2025`, or `TTM`
+- Monetary values and units follow Screener's presentation
+- Default metadata uses `INR` and `crores`
+
+## Manual Test Scripts
+
+The repository also contains simple manual scripts under [`test/`](/home/navaneeth/Desktop/openscreener/test):
+
+- [nifty.py](/home/navaneeth/Desktop/openscreener/test/nifty.py) for manual index testing
+- [qa.py](/home/navaneeth/Desktop/openscreener/test/qa.py) to pretty print a chosen number of `CNX500` constituents
+- [qa_one.py](/home/navaneeth/Desktop/openscreener/test/qa_one.py) to print one constituent by position
+- [batch.py](/home/navaneeth/Desktop/openscreener/test/batch.py) for a minimal `BatchStock` example
+
+Examples:
+
+```bash
+python test/qa.py 70
+python test/qa_one.py 22
+python test/batch.py
+```
 
 ## Development
 
@@ -327,20 +356,22 @@ Key repository paths:
 src/openscreener/         Package source
 src/openscreener/parsers/ Section parsers
 tests/                    Automated tests
+test/                     Manual helper scripts
 ```
 
-Run the test suite:
+Run tests:
 
 ```bash
-python -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=src python -m unittest discover -s tests -p 'test_*.py'
 ```
 
 ## Limitations
 
-- The parser depends on Screener.in's current HTML structure and section IDs
-- Live scraping requires Playwright plus installed browser binaries
-- Missing Screener sections raise `SectionNotFoundError`
-- There is no CLI yet; the project currently exposes a Python API only
+- Parsing depends on Screener.in's current HTML structure
+- Live scraping requires Playwright and installed browser binaries
+- Missing sections raise `SectionNotFoundError`
+- Very large indexes depend on Screener's live pagination remaining accessible
+- The project exposes a Python API; it does not currently provide a packaged CLI
 
 Use the live scraper responsibly and in a way that respects Screener.in's terms and rate limits.
 
