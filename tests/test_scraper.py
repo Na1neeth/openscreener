@@ -4,6 +4,13 @@ import sys
 import types
 import unittest
 from unittest.mock import MagicMock, patch
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from openscreener.exceptions import OpenScreenerError
 from openscreener.scraper import PlaywrightScraper
@@ -26,6 +33,7 @@ class PlaywrightScraperTestCase(unittest.TestCase):
 
         self.assertEqual(standalone._build_url("tcs"), "https://example.com/TCS/")
         self.assertEqual(consolidated._build_url("tcs"), "https://example.com/TCS/consolidated/")
+        self.assertEqual(standalone._build_url("tcs", page_number=2, page_size=50), "https://example.com/TCS/?page=2&limit=50")
 
     def test_fetch_page_uses_browser_session(self) -> None:
         page = MagicMock()
@@ -69,6 +77,31 @@ class PlaywrightScraperTestCase(unittest.TestCase):
 
         self.assertEqual(payload, {"TCS": "<html>TCS</html>", "INFY": "<html>INFY</html>"})
         self.assertEqual(load_page.call_count, 2)
+        page_one.close.assert_called_once()
+        page_two.close.assert_called_once()
+
+    def test_fetch_constituent_pages_returns_html_by_page(self) -> None:
+        page_one = MagicMock()
+        page_one.content.return_value = "<html>page-1</html>"
+        page_two = MagicMock()
+        page_two.content.return_value = "<html>page-2</html>"
+        browser = MagicMock()
+        browser.new_page.side_effect = [page_one, page_two]
+
+        class Session:
+            def __enter__(self):
+                return browser
+
+            def __exit__(self, exc_type, exc, tb):
+                return None
+
+        scraper = PlaywrightScraper()
+        with patch.object(PlaywrightScraper, "_browser_session", return_value=Session()), patch.object(PlaywrightScraper, "_load_page") as load_page:
+            payload = scraper.fetch_constituent_pages("nifty", page_numbers=[1, 2], page_size=50)
+
+        self.assertEqual(payload, ["<html>page-1</html>", "<html>page-2</html>"])
+        load_page.assert_any_call(page_one, "nifty", page_number=1, page_size=50)
+        load_page.assert_any_call(page_two, "nifty", page_number=2, page_size=50)
         page_one.close.assert_called_once()
         page_two.close.assert_called_once()
 

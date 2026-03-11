@@ -1,16 +1,18 @@
 # openscreener
 
-`openscreener` is a Python package for extracting structured financial data from [Screener.in](https://www.screener.in/). It uses Playwright to load live company pages and parser modules to turn Screener sections into normalized Python dictionaries and lists.
+`openscreener` is a Python package for extracting structured financial data from [Screener.in](https://www.screener.in/). It uses Playwright to load live company and index pages and parser modules to turn Screener sections into normalized Python dictionaries and lists.
 
 The package is built around three public entry points:
 
 - `Stock` for single-company access
+- `Index` for single-index access
 - `BatchStock` for fetching one or more sections across multiple symbols
 - `PlaywrightScraper` for live page loading
 
 ## Features
 
-- Extracts structured data for summary, analysis, peers, quarterly results, profit and loss, balance sheet, cash flow, ratios, and shareholding
+- Extracts structured data for stock summary, analysis, peers, quarterly results, profit and loss, balance sheet, cash flow, ratios, and shareholding
+- Extracts structured index summary and constituents data
 - Uses a high-level `Stock` API with one method per Screener section
 - Supports live scraping through Playwright
 - Includes JSON export, pretty terminal output, and optional pandas DataFrame conversion
@@ -49,7 +51,7 @@ pip install pandas
 `Stock(symbol)` uses the live Playwright scraper by default.
 
 ```python
-from openscreener import Stock
+from openscreener import Index, Stock
 
 stock = Stock("TCS")
 
@@ -65,6 +67,10 @@ payload = stock.fetch(["summary", "ratios", "shareholding"])
 print(payload["ratios"]["roce_percent"])
 
 stock.pretty("cash_flow")
+
+index = Index("NIFTY")
+print(index.summary()["company_name"])
+print(index.constituents(limit=5)["returned_companies"])
 ```
 
 Export everything as JSON:
@@ -76,12 +82,29 @@ stock = Stock("TCS")
 print(stock.to_json())
 ```
 
+Fetch an index and limit the returned constituents:
+
+```python
+from openscreener import Index
+
+index = Index("NIFTY")
+
+print(index.page_type())  # index
+print(index.available_sections())  # ['summary', 'constituents']
+
+payload = index.all(constituents_limit=10)
+print(payload["summary"]["company_name"])
+print(payload["constituents"]["returned_companies"])
+
+index.pretty(constituents_limit=10)
+```
+
 ## API Reference
 
 ### Imports
 
 ```python
-from openscreener import BatchStock, PlaywrightScraper, Stock
+from openscreener import BatchStock, Index, PlaywrightScraper, Stock
 ```
 
 ### `Stock`
@@ -105,12 +128,35 @@ Main methods:
 - `shareholding(frequency="quarterly")`
 - `shareholding_quarterly()`
 - `shareholding_yearly()`
-- `fetch(sections)`
+- `fetch(sections, constituents_limit=None)`
 - `all()`
 - `available_sections()`
+- `page_type()`
+- `is_stock()`
+- `is_index()`
 - `pretty(section=None)`
 - `print_section(section)`
 - `to_json(indent=2)`
+- `to_dataframe(section)`
+- `metadata()`
+
+### `Index`
+
+```python
+Index(symbol: str, scraper: PlaywrightScraper | None = None)
+```
+
+Main methods:
+
+- `summary()`
+- `constituents(limit=None)`
+- `fetch(sections, constituents_limit=None)`
+- `all(constituents_limit=None)`
+- `available_sections()`
+- `page_type()`
+- `pretty(section=None, constituents_limit=None)`
+- `print_section(section, constituents_limit=None)`
+- `to_json(indent=2, constituents_limit=None)`
 - `to_dataframe(section)`
 - `metadata()`
 
@@ -153,10 +199,11 @@ Main methods:
 
 - `fetch_page(symbol)`
 - `fetch_pages(symbols)`
+- `fetch_constituent_pages(symbol, page_numbers, page_size=50)`
 
 ## Supported Sections
 
-These names work with `Stock.fetch(...)`:
+Stock page sections:
 
 | Canonical section | Accepted aliases | Stock method | Return shape |
 | --- | --- | --- | --- |
@@ -170,6 +217,13 @@ These names work with `Stock.fetch(...)`:
 | `ratios` | `ratios` | `ratios()` | `dict` |
 | `shareholding` | `shareholding` | `shareholding()` | `list[dict]` |
 
+Index page sections:
+
+| Canonical section | Accepted aliases | Index method | Return shape |
+| --- | --- | --- | --- |
+| `summary` | `summary` | `summary()` | `dict` |
+| `constituents` | `constituents`, `companies` | `constituents(limit=None)` | `dict` |
+
 Helper-only section names supported by `pretty()`, `print_section()`, and `to_dataframe()`:
 
 - `pros`
@@ -179,9 +233,13 @@ Helper-only section names supported by `pretty()`, `print_section()`, and `to_da
 
 ## API Notes
 
+- `stock.page_type()` returns `stock`, `index`, or `unknown`
+- `Index("NIFTY")` is the preferred public API for index pages
+- `Stock("NIFTY")` now raises a helpful error telling you to use `Index("NIFTY")`
 - `stock.fetch("ratios")` returns `{"ratios": {...}}`
-- `stock.all()` fetches every canonical section
-- `stock.available_sections()` returns the supported canonical section names
+- `stock.all()` fetches every stock section
+- `index.all(constituents_limit=10)` limits index constituents in the output
+- `stock.available_sections()` returns stock section names, while `index.available_sections()` returns index section names
 - `stock.pros()` and `stock.cons()` return plain string lists from the analysis block
 - `stock.shareholding()` defaults to quarterly data
 - `stock.shareholding_yearly()` fetches yearly shareholding history
