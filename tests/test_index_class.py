@@ -34,6 +34,23 @@ class IndexClassTestCase(unittest.TestCase):
         self.assertEqual(payload["constituents"]["returned_companies"], 55)
         self.assertEqual(payload["constituents"]["companies"][-1]["symbol"], "COMP55")
 
+    def test_constituents_uses_actual_rows_per_page_when_site_ignores_requested_limit(self) -> None:
+        constituent_pages = {
+            (page_number, 50): load_index_html(page=page_number, page_size=25, total_companies=500)
+            for page_number in range(1, 21)
+        }
+        scraper = FakeScraper(
+            {"CNX500": load_index_html(page=1, page_size=25, total_companies=500)},
+            constituent_pages={"CNX500": constituent_pages},
+        )
+        index = Index("CNX500", scraper=scraper)
+
+        payload = index.constituents(limit=200)
+
+        self.assertEqual(payload["returned_companies"], 200)
+        self.assertEqual(payload["companies"][-1]["symbol"], "COMP200")
+        self.assertEqual(scraper.fetch_constituent_pages_calls, 8)
+
     def test_to_dataframe_supports_constituents(self) -> None:
         class FakePandas:
             def DataFrame(self, data):

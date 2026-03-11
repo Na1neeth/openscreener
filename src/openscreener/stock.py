@@ -301,19 +301,32 @@ class Stock:
         """Return parsed index constituents, optionally capped to the requested count."""
 
         self._require_section_available("constituents")
-        first_page = self._parse_constituent_page(page_number=1, page_size=50)
+        requested_page_size = 50
+        first_page = self._parse_constituent_page(page_number=1, page_size=requested_page_size)
         total_companies = int(first_page.get("total_companies") or 0)
-        wanted = total_companies if limit is None else max(0, min(limit, total_companies))
         companies = list(first_page.get("companies") or [])
-        if wanted and len(companies) < wanted:
-            page_size = 50
-            pages_needed = math.ceil(wanted / page_size)
+        total_pages = max(1, int(first_page.get("total_pages") or 1))
+        effective_page_size = len(companies) or requested_page_size
+
+        if limit is None:
+            wanted = total_companies or None
+        else:
+            wanted = max(limit, 0)
+            if total_companies:
+                wanted = min(wanted, total_companies)
+
+        if wanted is not None and len(companies) >= wanted:
+            companies = companies[:wanted]
+        elif total_pages > 1:
+            pages_needed = total_pages if wanted is None else min(total_pages, math.ceil(wanted / effective_page_size))
             for page_number in range(2, pages_needed + 1):
-                page_payload = self._parse_constituent_page(page_number=page_number, page_size=page_size)
+                page_payload = self._parse_constituent_page(page_number=page_number, page_size=requested_page_size)
                 companies.extend(page_payload.get("companies") or [])
+                if wanted is not None and len(companies) >= wanted:
+                    break
 
         constituents = dict(first_page)
-        constituents["companies"] = companies[:wanted] if wanted or limit == 0 else companies
+        constituents["companies"] = companies[:wanted] if wanted is not None else companies
         constituents["returned_companies"] = len(constituents["companies"])
         if limit is not None:
             constituents["requested_limit"] = max(limit, 0)
