@@ -13,11 +13,11 @@ if str(SRC) not in sys.path:
 
 from openscreener import Index
 
-CONSTITUENTS_LIMIT = 10
+CONSTITUENTS_LIMIT = 50
 
 
 def main() -> int:
-    index = Index("NIFTY")
+    index = Index("CNX500") #for NIFTY500 IT WILL TAKE SOME TIME TO FETCH ALL THE DATA OF 500 COMPANIES, SO BE PATIENT
 
     print("Page type:", index.page_type())
     print("Available sections:", index.available_sections())
@@ -38,7 +38,7 @@ def main() -> int:
         print(company.get("symbol"), "-", company.get("name"))
 
     # Remove the # below to see the full summary dictionary.
-    # print(index.summary())
+    print(index.summary())
 
     # Remove the # below to see the full constituents payload.
     # print(index.constituents(limit=CONSTITUENTS_LIMIT))
@@ -50,7 +50,7 @@ def main() -> int:
     # print(index.to_json(constituents_limit=CONSTITUENTS_LIMIT))
 
     # Remove the # below to test pretty().
-    # index.pretty(constituents_limit=CONSTITUENTS_LIMIT)
+    index.pretty(constituents_limit=CONSTITUENTS_LIMIT)
 
     # Remove the # below to pretty print only one section.
     # index.print_section("constituents", constituents_limit=CONSTITUENTS_LIMIT)

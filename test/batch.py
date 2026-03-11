@@ -16,7 +16,7 @@ from openscreener import Stock
 
 
 def main() -> int:
-    symbols = ["TCS", "INFY"]
+    symbols = ["TCS", "532540"]
     batch = Stock.batch(symbols)
     payload = batch.fetch("summary")
 
