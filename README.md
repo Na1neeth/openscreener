@@ -342,3 +342,9 @@ Use the live scraper responsibly and in a way that respects Screener.in's terms 
 ## License
 
 MIT. See [`LICENSE`](./LICENSE).
+
+## Legal Disclaimer
+
+`openscreener` is distributed under the MIT License. See the [`LICENSE`](./LICENSE) file for details.
+
+`openscreener` is not affiliated with, endorsed by, or vetted by Screener.in. It is an open-source tool that uses Screener.in's publicly available pages and is intended for research and educational purposes. Refer to Screener.in's terms of use for details on your rights to access and use the underlying data. You are responsible for ensuring your usage complies with applicable terms, laws, and regulations.
